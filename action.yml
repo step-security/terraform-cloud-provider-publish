@@ -1,0 +1,20 @@
+name: 'Terraform Cloud Private Provider Publish'
+description: 'Publish a terraform provider to a private repository'
+author: 'step-security'
+inputs:
+  organization-name:
+    required: true
+    description: 'name of the terraform cloud organization'
+  organization-api-token:
+    required: true
+    description: 'access key needed to access the organizations registry'
+  provider-directory:
+    required: true
+    description: 'the folder containing all of the files that make up a provider'
+    default: '.'
+  gpg-key:
+    required: true
+    description: 'the ascii armored public key used to sign the provider'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
