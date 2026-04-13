@@ -16,5 +16,5 @@ inputs:
     required: true
     description: 'the ascii armored public key used to sign the provider'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'

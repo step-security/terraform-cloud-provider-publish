@@ -1,3 +1,5 @@
+[![StepSecurity Maintained Action](https://raw.githubusercontent.com/step-security/maintained-actions-assets/main/assets/maintained-action-banner.png)](https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions)
+
 <p align="center">
   <a href="https://github.com/step-security/terraform-cloud-provider-publish/actions"><img alt="terraform-cloud-provider-publish status" src="https://github.com/step-security/terraform-cloud-provider-publish/workflows/build-test/badge.svg"></a>
 </p>

@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const fs = __importStar(__nccwpck_require__(1943));
+const fsSync = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
 const core = __importStar(__nccwpck_require__(7484));
 const exec = __importStar(__nccwpck_require__(5236));
@@ -49,23 +50,41 @@ const terraform_1 = __nccwpck_require__(2536);
 const providerPrefix = 'terraform-provider-';
 const fileRegex = /^(?<provider>[a-zA-Z0-9-]+)_(?<version>[a-zA-Z0-9-.]+)_(?<os>[a-zA-Z0-9-]+)_(?<arch>[a-zA-Z0-9-]+)\.(?<extension>[a-zA-Z0-9-.]+)$/;
 async function validateSubscription() {
-    var _a;
-    const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    let repoPrivate;
+    if (eventPath && fsSync.existsSync(eventPath)) {
+        const eventData = JSON.parse(fsSync.readFileSync(eventPath, 'utf8'));
+        repoPrivate = eventData?.repository?.private;
+    }
+    const upstream = 'thechrisjohnson/terraform-cloud-provider-publish';
+    const action = process.env.GITHUB_ACTION_REPOSITORY;
+    const docsUrl = 'https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions';
+    core.info('');
+    core.info('\u001b[1;36mStepSecurity Maintained Action\u001b[0m');
+    core.info(`Secure drop-in replacement for ${upstream}`);
+    if (repoPrivate === false)
+        core.info('\u001b[32m\u2713 Free for public repositories\u001b[0m');
+    core.info(`\u001b[36mLearn more:\u001b[0m ${docsUrl}`);
+    core.info('');
+    if (repoPrivate === false)
+        return;
+    const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+    const body = { action: action || '' };
+    if (serverUrl !== 'https://github.com')
+        body.ghes_server = serverUrl;
     try {
-        await axios_1.default.get(API_URL, { timeout: 3000 });
+        await axios_1.default.post(`https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/maintained-actions-subscription`, body, { timeout: 3000 });
     }
     catch (error) {
-        if ((0, axios_1.isAxiosError)(error) && ((_a = error.response) === null || _a === void 0 ? void 0 : _a.status) === 403) {
-            core.error('Subscription is not valid. Reach out to support@stepsecurity.io');
+        if ((0, axios_1.isAxiosError)(error) && error.response?.status === 403) {
+            core.error(`\u001b[1;31mThis action requires a StepSecurity subscription for private repositories.\u001b[0m`);
+            core.error(`\u001b[31mLearn how to enable a subscription: ${docsUrl}\u001b[0m`);
             process.exit(1);
         }
-        else {
-            core.info('Timeout or API not reachable. Continuing to next step.');
-        }
+        core.info('Timeout or API not reachable. Continuing to next step.');
     }
 }
 async function run() {
-    var _a, _b;
     try {
         await validateSubscription();
         // Load configuration
@@ -135,7 +154,7 @@ async function run() {
         }
         core.info(`Checking to see if gpg key exists...`);
         const existingKeys = await tfClient.getAllSigningKeys();
-        let signingKey = (_a = existingKeys.data) === null || _a === void 0 ? void 0 : _a.find(key => key.attributes['ascii-armor'] === gpgKey);
+        let signingKey = existingKeys.data?.find(key => key.attributes['ascii-armor'] === gpgKey);
         if (signingKey == null) {
             core.info(`Gpg key does not exist, creating...`);
             signingKey = await tfClient.postSingingKey(gpgKey);
@@ -184,7 +203,7 @@ async function run() {
                 core.info(`Skipping file ${file}, did not match regex ${fileRegex}`);
                 continue;
             }
-            const { provider, version, os, arch, extension } = match === null || match === void 0 ? void 0 : match.groups;
+            const { provider, version, os, arch, extension } = match?.groups;
             if (provider !== providerPrefix.concat(providerName) ||
                 version !== providerVersion ||
                 extension !== 'zip') {
@@ -193,7 +212,7 @@ async function run() {
             }
             core.info(`Checking to see if platform ${os}_${arch} for ${providerName} ${providerVersion} already exists`);
             const existingPlatforms = await tfClient.getAllProviderPlatforms(providerName, providerVersion);
-            let platform = (_b = existingPlatforms.data) === null || _b === void 0 ? void 0 : _b.find(plat => plat.attributes.os === os && plat.attributes.arch === arch);
+            let platform = existingPlatforms.data?.find(plat => plat.attributes.os === os && plat.attributes.arch === arch);
             if (platform == null) {
                 core.info(`Creating platform ${os}_${arch} for ${providerName} ${providerVersion}`);
                 platform = await tfClient.postProviderPlatform(providerName, providerVersion, os, arch, shasum, file);
@@ -261,14 +280,15 @@ function GenerateProviderPlatformUrl(organizationName, providerName, version) {
     return `https://app.terraform.io/api/v2/organizations/${organizationName}/registry-providers/private/${organizationName}/${providerName}/versions/${version}/platforms`;
 }
 class TerraformClient {
+    organizationName;
+    httpClient;
     constructor(organizationName, organizationKey) {
         this.organizationName = organizationName;
         this.httpClient = new http_client_1.HttpClient('Publish Private Provider Action', [new auth_1.BearerCredentialHandler(organizationKey)], { headers: { 'Content-Type': 'application/vnd.api+json' } });
     }
     async getProvider(providerName) {
-        var _a, _b;
         const response = await this.httpClient.getJson(GenerateGetProviderUrl(this.organizationName, providerName));
-        return (_b = (_a = response.result) === null || _a === void 0 ? void 0 : _a.data) !== null && _b !== void 0 ? _b : null;
+        return response.result?.data ?? null;
     }
     async postProvider(providerName) {
         const body = {
@@ -311,9 +331,8 @@ class TerraformClient {
         return response.result.data;
     }
     async getProviderVersion(providerName, version) {
-        var _a, _b;
         const response = await this.httpClient.getJson(GenerateGetProviderVersionUrl(this.organizationName, providerName, version));
-        return (_b = (_a = response.result) === null || _a === void 0 ? void 0 : _a.data) !== null && _b !== void 0 ? _b : null;
+        return response.result?.data ?? null;
     }
     async postProviderVersion(providerName, version, supportedProtocols, keyId) {
         const body = {
